@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 # coding=utf-8
-
+__author__ = 'jszhou'
 from bottle import *
 import bottle
 import hashlib
@@ -50,11 +50,41 @@ if sss!=test[1]:
     cur.execute("INSERT INTO YYETS (source) VALUES (%s)",sss)
 
 
+"""
+Change Log:
+# 03-04--03-08 完成微信API+Python自动回复代码雏形，可以通过电影ID查询电影信息，以Text形式返回给用户电影
+Title和电影summary
+# 03-11 完成通过电影名称查询并返回图文格式的数据
+# 03-13 1.增加给新关注的用户自动返回“欢迎关注豆瓣电影，输入电影名称即可快速查询电影讯息哦！”信息的功能
+        2.完善注释信息
+# 03-28 根据微信公众平台公告，更改获取新关注用户方式，从text改为event。
+
+关于本地调试问题：
+微信没有提供本地调试功能，给用户造成不小的麻烦。
+打开Bottle的Debug功能，在本地运行自己的代码（启动Server），使用Chrome或Firefox上的Advanced Rest Client插件来模拟微信服务器向自己的应用发送请求，
+这样就可以看到详细的报错信息，方便开发者定位修复问题，其相当于，自己的应用是SAE，而Advanced Rest Client模拟的是新微信客户端和微信服务器。
+也有同学自己写脚本，模拟微信服务器发送数据，这也是同样的道理。
+
+遗留问题：
+1.从豆瓣拿到的海报图片都是竖向的，而微信中显示的是横向的，所以在微信看图片就被裁了一节，不过还好能看，
+  如何能完整显示海报图片，有待进一步research;
+2.现在的通过电影名称返回的结果，实际上是拿的豆瓣返回的第一条数据，这样就有可能不准确，如何精确匹配用户的
+  查询条件，也还需要进一步研究。
+"""
 
 
 @get("/")
 def checkSignature():
-    token = "Your token"  # 你在微信公众平台上设置的TOKEN
+    """
+    这里是用来做接口验证的，从微信Server请求的URL中拿到“signature”,“timestamp”,"nonce"和“echostr”，
+    然后再将token, timestamp, nonce三个排序并进行Sha1计算，并将计算结果和拿到的signature进行比较，
+    如果相等，就说明验证通过。
+    话说微信的这个验证做的很渣，因为只要把echostr返回去，就能通过验证，这也就造成我看到一个Blog中，
+    验证那儿只返回了一个echostr，而纳闷了半天。
+    附微信Server请求的Url示例：http://yoursaeappid.sinaapp.com/?signature=730e3111ed7303fef52513c8733b431a0f933c7c
+    &echostr=5853059253416844429&timestamp=1362713741&nonce=1362771581
+    """
+    token = "jiahhu"  # 你在微信公众平台上设置的TOKEN
     signature = request.GET.get('signature', None)  # 拼写不对害死人那，把signature写成singnature，直接导致怎么也认证不成功
     timestamp = request.GET.get('timestamp', None)
     nonce = request.GET.get('nonce', None)
@@ -70,16 +100,18 @@ def checkSignature():
 
 @app.route('/' , method='GET')
 def yy():
-    page=urllib2.urlopen('http://www.yyets.com/resourcelist?channel=movie&area=%&category=&format=HR-HDTV&sort=')
-    contentsyy=page.read()
-    movie_yy=re.findall(r'<strong>(.*?)</strong></a>',contentsyy)
-    yyets_movie= movie_yy[20].encode('utf-8')
-    sss=yyets_movie
+	conn=MySQLdb.connect(host=MYSQL_HOST_M,user=MYSQL_USER,passwd=MYSQL_PASS,db=MYSQL_DB,port=MYSQL_PORT)
+	cur=conn.cursor()
+	page=urllib2.urlopen('http://www.yyets.com/resourcelist?channel=movie&area=%&category=&format=HR-HDTV&sort=')
+	contentsyy=page.read()
+	movie_yy=re.findall(r'<strong>(.*?)</strong></a>',contentsyy)
+	yyets_movie= movie_yy[20].encode('utf-8')
+	sss=yyets_movie
 
-    cur.execute('SELECT * FROM YYETS ORDER BY id DESC LIMIT 1')
-    test=cur.fetchone()
-    if sss!=test[1]:
-        cur.execute("INSERT INTO YYETS (source) VALUES (%s)",sss)
+	cur.execute('SELECT * FROM YYETS ORDER BY id DESC LIMIT 1')
+	test=cur.fetchone()
+	if sss!=test[1]:
+	    cur.execute("INSERT INTO YYETS (source) VALUES (%s)",sss)
     
 
 
@@ -92,8 +124,10 @@ def yyets():
     return test[1]
 
 def parse_msg():
-
-    recvmsg = request.body.read()  
+    """
+    这里是用来解析微信Server Post过来的XML数据的，取出各字段对应的值，以备后面的代码调用，也可用lxml等模块。
+    """
+    recvmsg = request.body.read()  # 严重卡壳的地方，最后还是在Stack OverFlow上找到了答案
     root = ET.fromstring(recvmsg)
     msg = {}
     for child in root:
@@ -123,25 +157,34 @@ def search_course():
 
 
 def query_movie_info():
-
+    """
+    这里使用豆瓣的电影search API，通过关键字查询电影信息，这里的关键点是，一是关键字取XML中的Content值，
+    二是如果Content中存在汉字，就需要先转码，才能进行请求
+    """
     movieurlbase = "http://api.douban.com/v2/movie/search"
-    DOUBAN_APIKEY = "0ec7076653f7fffb2c551632fbe7fff1" 
+    DOUBAN_APIKEY = "0ec7076653f7fffb2c551632fbe7fff1"  # 这里需要填写你自己在豆瓣上申请的应用的APIKEY
     movieinfo = parse_msg()
-    searchkeys = yyets()
+    searchkeys = yyets()  # 如果Content中存在汉字，就需要先转码，才能进行请
     
     url = '%s?q=%s&apikey=%s' % (movieurlbase, searchkeys, DOUBAN_APIKEY)
-
+    # return "<p>{'url': %s}</p>" % url
+    # url = '%s%s?apikey=%s' % (movieurlbase, id["Content"], DOUBAN_APIKEY)
+    # resp = requests.get(url=url, headers=header)
     resp = urllib2.urlopen(url)
     movie = json.loads(resp.read())
-
+    # return "<p>{'movie': %s}</p>" % movie
+    # info = movie["subjects"][0]["title"] + movie["subjects"][0]["alt"]
+    # info = movie['title'] + ': ' + ''.join(movie['summary'])
     return movie
-
+    # return info
 
 
 def query_movie_details():
-
+    """
+    这里使用豆瓣的电影subject API，通过在query_movie_info()中拿到的电影ID，来获取电影的summary。
+    """
     movieurlbase = "http://api.douban.com/v2/movie/subject/"
-    DOUBAN_APIKEY = "0ec7076653f7fffb2c551632fbe7fff1"
+    DOUBAN_APIKEY = "0ec7076653f7fffb2c551632fbe7fff1"  # 这里需要填写你自己在豆瓣上申请的应用的APIKEY
     id = query_movie_info()
     url = '%s%s?apikey=%s' % (movieurlbase, id["subjects"][0]["id"], DOUBAN_APIKEY)
     resp = urllib2.urlopen(url)
@@ -152,9 +195,19 @@ def query_movie_details():
 
 @post("/")
 def response_msg():
- 
-    msg = parse_msg()
+    """
+    这里是响应微信Server的请求，并返回数据的主函数，判断Content内容，如果是一条“subscribe”的事件，就
+    表明是一个新注册用户，调用纯文本格式返回，如果是其他的内容就组织数据以图文格式返回。
 
+    基本思路：
+    # 拿到Post过来的数据
+    # 分析数据（拿到FromUserName、ToUserName、CreateTime、MsgType和content）
+    # 构造回复信息（将你组织好的content返回给用户）
+    """
+    # 拿到并解析数据
+    msg = parse_msg()
+    # 设置返回数据模板
+    # 纯文本格式
     textTpl = """<xml>
              <ToUserName><![CDATA[%s]]></ToUserName>
              <FromUserName><![CDATA[%s]]></FromUserName>
@@ -194,7 +247,8 @@ def response_msg():
                 </Articles>
                 <FuncFlag>1</FuncFlag>
                 </xml> """
-
+    # 判断Content内容，如果等于"Hello2BizUser"，表明是一个新关注用户，如果不是，就返回电影标题，电影简介
+    # 和电影海报组成的图文信息
     if msg["MsgType"] == "event":
         echostr = textTpl % (
             msg['FromUserName'], msg['ToUserName'], str(int(time.time())),
@@ -204,7 +258,7 @@ def response_msg():
         Content = query_movie_info()
         description = query_movie_details()
         echostr = pictextTpl % (msg['FromUserName'], msg['ToUserName'], str(int(time.time())),
-                                Content["subjects"][0]["title"], description,
+                                u"人人影视最新HR-HDTV电影更新--"+Content["subjects"][0]["title"], description,
                                 Content["subjects"][0]["images"]["large"], Content["subjects"][0]["alt"])
         return echostr     
     elif special_match(msg["Content"])==True:
@@ -220,6 +274,11 @@ def response_msg():
             msg['FromUserName'], msg['ToUserName'], str(int(time.time())),
             u"无效指令，请输入“dy”查询电影或者课程代码如“CSE114”查询课程简介！")
        return echostr
+
+
+
+
+
 
 
 if __name__=="__main__":
