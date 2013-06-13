@@ -48,8 +48,11 @@ cur.execute('SELECT * FROM YYETS ORDER BY id DESC LIMIT 1')
 test=cur.fetchone()
 if sss!=test[1]:
     cur.execute("INSERT INTO YYETS (source) VALUES (%s)",sss)
+<<<<<<< HEAD
     
     
+=======
+>>>>>>> 0d63845566af51e597537c5c6eca7ebbe25fd34c
 
 
 """
@@ -102,6 +105,7 @@ def checkSignature():
 
 @app.route('/' , method='GET')
 def yy():
+<<<<<<< HEAD
     conn=MySQLdb.connect(host=MYSQL_HOST_M,user=MYSQL_USER,passwd=MYSQL_PASS,db=MYSQL_DB,port=MYSQL_PORT)
     cur=conn.cursor()
     page=urllib2.urlopen('http://www.yyets.com/resourcelist?channel=movie&area=%&category=&format=HR-HDTV&sort=')
@@ -155,6 +159,20 @@ def sbu():
     page_sbu=urllib2.urlopen(url_sbu)
     content_sbu=page_sbu.read()
     return content_sbu
+=======
+	conn=MySQLdb.connect(host=MYSQL_HOST_M,user=MYSQL_USER,passwd=MYSQL_PASS,db=MYSQL_DB,port=MYSQL_PORT)
+	cur=conn.cursor()
+	page=urllib2.urlopen('http://www.yyets.com/resourcelist?channel=movie&area=%&category=&format=HR-HDTV&sort=')
+	contentsyy=page.read()
+	movie_yy=re.findall(r'<strong>(.*?)</strong></a>',contentsyy)
+	yyets_movie= movie_yy[20].encode('utf-8')
+	sss=yyets_movie
+
+	cur.execute('SELECT * FROM YYETS ORDER BY id DESC LIMIT 1')
+	test=cur.fetchone()
+	if sss!=test[1]:
+	    cur.execute("INSERT INTO YYETS (source) VALUES (%s)",sss)
+>>>>>>> 0d63845566af51e597537c5c6eca7ebbe25fd34c
     
 
 
@@ -179,6 +197,7 @@ def parse_msg():
 
 
 def search_course():
+<<<<<<< HEAD
     conn=MySQLdb.connect(host=MYSQL_HOST_M,user=MYSQL_USER,passwd=MYSQL_PASS,db=MYSQL_DB,port=MYSQL_PORT)
     cur=conn.cursor()
     msg = parse_msg()
@@ -196,6 +215,25 @@ def search_course():
         return return_info[2]
     else :
         return u"对不起，没有查询到该课程！"
+=======
+	conn=MySQLdb.connect(host=MYSQL_HOST_M,user=MYSQL_USER,passwd=MYSQL_PASS,db=MYSQL_DB,port=MYSQL_PORT)
+	cur=conn.cursor()
+	msg = parse_msg()
+	course_code=msg["Content"]
+	course_code=course_code.replace(" ","")
+	course_code=course_code.upper()
+
+	if cur.execute('SELECT * FROM SBU WHERE CODE = %s ORDER BY ID DESC LIMIT 1',course_code):
+
+		return_course=cur.fetchone()
+		course_id=return_course[0]
+		info_id=course_id+1
+		cur.execute('SELECT * FROM SBU WHERE ID = %s ORDER BY ID DESC LIMIT 1',info_id)
+		return_info=cur.fetchone()
+		return return_info[2]
+	else :
+		return u"对不起，没有查询到该课程！"
+>>>>>>> 0d63845566af51e597537c5c6eca7ebbe25fd34c
 
 
 
@@ -303,7 +341,16 @@ def response_msg():
         echostr = pictextTpl % (msg['FromUserName'], msg['ToUserName'], str(int(time.time())),
                                 u"人人影视最新HR-HDTV电影更新--"+Content["subjects"][0]["title"], description,
                                 Content["subjects"][0]["images"]["large"], Content["subjects"][0]["alt"])
+        return echostr     
+    elif special_match(msg["Content"])==True:
+        sbu_course=search_course()
+        
+        #print sbu_course
+        echostr = textTpl % (
+            msg['FromUserName'], msg['ToUserName'], str(int(time.time())),
+            sbu_course)
         return echostr
+<<<<<<< HEAD
     elif msg["Content"].lower()=="bus":
         bus=sbu()
         echostr = textTpl % (
@@ -319,6 +366,8 @@ def response_msg():
             msg['FromUserName'], msg['ToUserName'], str(int(time.time())),
             sbu_course)
         return echostr
+=======
+>>>>>>> 0d63845566af51e597537c5c6eca7ebbe25fd34c
     else:
        echostr = textTpl % (
             msg['FromUserName'], msg['ToUserName'], str(int(time.time())),
