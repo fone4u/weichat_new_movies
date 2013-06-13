@@ -2,13 +2,55 @@
 # coding=utf-8
 __author__ = 'jszhou'
 from bottle import *
+import bottle
 import hashlib
 import xml.etree.ElementTree as ET
+import MySQLdb
 import urllib2,sys,re
+import sae.const
+import pylibmc
 reload(sys) 
 sys.setdefaultencoding('utf8')
 # import requests
 import json
+
+
+def special_match(strg, search=re.compile(r'[a-zA-Z]{3}(.*)\d{3}').search):
+    return  bool(search(strg))
+
+
+app=Bottle()
+
+#SAE MYSQL
+MYSQL_DB=sae.const.MYSQL_DB
+MYSQL_USER=sae.const.MYSQL_USER
+MYSQL_PASS=sae.const.MYSQL_PASS
+MYSQL_HOST_M=sae.const.MYSQL_HOST
+MYSQL_HOST_S=sae.const.MYSQL_HOST_S
+MYSQL_PORT=int(sae.const.MYSQL_PORT)
+
+#connect to sae MYSQL
+
+
+
+page=urllib2.urlopen('http://www.yyets.com/resourcelist?channel=movie&area=%&category=&format=HR-HDTV&sort=')
+contentsyy=page.read()
+movie_yy=re.findall(r'<strong>(.*?)</strong></a>',contentsyy)
+yyets_movie= movie_yy[20].encode('utf-8')
+sss=yyets_movie
+conn=MySQLdb.connect(host=MYSQL_HOST_M,user=MYSQL_USER,passwd=MYSQL_PASS,db=MYSQL_DB,port=MYSQL_PORT)
+cur=conn.cursor()
+
+
+
+
+cur.execute('SELECT * FROM YYETS ORDER BY id DESC LIMIT 1')
+test=cur.fetchone()
+if sss!=test[1]:
+    cur.execute("INSERT INTO YYETS (source) VALUES (%s)",sss)
+    
+    
+
 
 """
 Change Log:
@@ -44,7 +86,7 @@ def checkSignature():
     附微信Server请求的Url示例：http://yoursaeappid.sinaapp.com/?signature=730e3111ed7303fef52513c8733b431a0f933c7c
     &echostr=5853059253416844429&timestamp=1362713741&nonce=1362771581
     """
-    token = "xiaomayi"  # 你在微信公众平台上设置的TOKEN
+    token = "jiahhu"  # 你在微信公众平台上设置的TOKEN
     signature = request.GET.get('signature', None)  # 拼写不对害死人那，把signature写成singnature，直接导致怎么也认证不成功
     timestamp = request.GET.get('timestamp', None)
     nonce = request.GET.get('nonce', None)
@@ -58,16 +100,71 @@ def checkSignature():
     else:
         return None
 
-    
-    
-    
-def yyets():
+@app.route('/' , method='GET')
+def yy():
+    conn=MySQLdb.connect(host=MYSQL_HOST_M,user=MYSQL_USER,passwd=MYSQL_PASS,db=MYSQL_DB,port=MYSQL_PORT)
+    cur=conn.cursor()
     page=urllib2.urlopen('http://www.yyets.com/resourcelist?channel=movie&area=%&category=&format=HR-HDTV&sort=')
     contentsyy=page.read()
     movie_yy=re.findall(r'<strong>(.*?)</strong></a>',contentsyy)
     yyets_movie= movie_yy[20].encode('utf-8')
     sss=yyets_movie
-    return sss
+
+    cur.execute('SELECT * FROM YYETS ORDER BY id DESC LIMIT 1')
+    test=cur.fetchone()
+    if sss!=test[1]:
+        cur.execute("INSERT INTO YYETS (source) VALUES (%s)",sss)
+    count=0
+    bus_info=''
+    while(count<7):
+        
+        url='http://smarttransit.cewit.stonybrook.edu/mobile/jquery_routequery.php?id='+str(count)
+        page=urllib2.urlopen(url)
+        content=page.read()
+        count=count+1
+        name=re.findall(r'left:5px">(.*?)</div><br/',content)
+        if name:
+            bus_info= bus_info+'**'+name[0]+':'
+            time=re.findall(r'Updated:(.*?)</div>',content)
+            
+            bus_info=bus_info+ " Updated:"+time[0]
+
+            next_stops=re.findall(r'16px;\'>(.*?)</font',content,re.S)
+            for key in next_stops:
+                key=key.replace('<font style="font-size:16px; float:right">',' ')
+                bus_info=bus_info+ ' '+key+';'
+
+            
+        else:
+            if count==4:
+                bus_info=bus_info+' No Information for OutLoop;\n'
+            if count==3:
+                bus_info=bus_info+' No Information for Hospitial/Chapin Route;\n'
+            if count==1:
+                bus_info=bus_info+' No Information for R&D Park Shuttle;\n'
+            if count==6:
+                bus_info=bus_info+' No Information for Railroad Route;\n'
+    cur.execute('SELECT * FROM sbu_bus ORDER BY id DESC LIMIT 1')
+    test_bus=cur.fetchone()
+    if sss_bus!=test_bus[1]:
+        cur.execute("INSERT INTO sbu_bus (info) VALUES (%s)",sss_bus)
+
+def sbu():
+
+    url_sbu='http://bus.hychanglv.com'
+    page_sbu=urllib2.urlopen(url_sbu)
+    content_sbu=page_sbu.read()
+    return content_sbu
+    
+
+
+
+def yyets():
+    conn=MySQLdb.connect(host=MYSQL_HOST_M,user=MYSQL_USER,passwd=MYSQL_PASS,db=MYSQL_DB,port=MYSQL_PORT)
+    cur=conn.cursor()
+    cur.execute('SELECT * FROM YYETS ORDER BY id DESC LIMIT 1')
+    test=cur.fetchone()
+    return test[1]
 
 def parse_msg():
     """
@@ -81,6 +178,26 @@ def parse_msg():
     return msg
 
 
+def search_course():
+    conn=MySQLdb.connect(host=MYSQL_HOST_M,user=MYSQL_USER,passwd=MYSQL_PASS,db=MYSQL_DB,port=MYSQL_PORT)
+    cur=conn.cursor()
+    msg = parse_msg()
+    course_code=msg["Content"]
+    course_code=course_code.replace(" ","")
+    course_code=course_code.upper()
+
+    if cur.execute('SELECT * FROM SBU WHERE CODE = %s ORDER BY ID DESC LIMIT 1',course_code):
+
+        return_course=cur.fetchone()
+        course_id=return_course[0]
+        info_id=course_id+1
+        cur.execute('SELECT * FROM SBU WHERE ID = %s ORDER BY ID DESC LIMIT 1',info_id)
+        return_info=cur.fetchone()
+        return return_info[2]
+    else :
+        return u"对不起，没有查询到该课程！"
+
+
 
 def query_movie_info():
     """
@@ -90,17 +207,7 @@ def query_movie_info():
     movieurlbase = "http://api.douban.com/v2/movie/search"
     DOUBAN_APIKEY = "0ec7076653f7fffb2c551632fbe7fff1"  # 这里需要填写你自己在豆瓣上申请的应用的APIKEY
     movieinfo = parse_msg()
-    
-    
-    
-    
-    
-    searchkeys = yyets()  # 如果Content中存在汉字，就需要先转码，才能进行请求
-    
-    
-    
-	
-    
+    searchkeys = yyets()  # 如果Content中存在汉字，就需要先转码，才能进行请
     
     url = '%s?q=%s&apikey=%s' % (movieurlbase, searchkeys, DOUBAN_APIKEY)
     # return "<p>{'url': %s}</p>" % url
@@ -169,22 +276,62 @@ def response_msg():
                 </Articles>
                 <FuncFlag>1</FuncFlag>
                 </xml> """
+    textTpl_new = """<xml>
+                <ToUserName><![CDATA[%s]]></ToUserName>
+                <FromUserName><![CDATA[%s]]></FromUserName>
+                <CreateTime>%s</CreateTime>
+                <MsgType><![CDATA[news]]></MsgType>
+                <ArticleCount>1</ArticleCount>
+                <Articles>
+                <item>
+                <Title><![CDATA[%s]]></Title>
+                <Description><![CDATA[%s]]></Description>
+                </item>
+                </Articles>
+                <FuncFlag>1</FuncFlag>
+                </xml> """
     # 判断Content内容，如果等于"Hello2BizUser"，表明是一个新关注用户，如果不是，就返回电影标题，电影简介
     # 和电影海报组成的图文信息
     if msg["MsgType"] == "event":
         echostr = textTpl % (
             msg['FromUserName'], msg['ToUserName'], str(int(time.time())),
-            u"欢迎关注最新电影，目前只支持人人影视HR电影，回复任意字符即可查看人人发布的最新HR电影的豆瓣介绍!---powered by jiahhu")
+            u"欢迎关注，回复‘dy’即可查看人人发布的最新HR电影的豆瓣介绍! 回复课程代码如‘cse114’即可获取相关课程信息！---powered by jiahhu")
         return echostr
-    else:
+    elif msg["Content"].lower()=="dy":
         Content = query_movie_info()
         description = query_movie_details()
         echostr = pictextTpl % (msg['FromUserName'], msg['ToUserName'], str(int(time.time())),
-                                Content["subjects"][0]["title"], description,
+                                u"人人影视最新HR-HDTV电影更新--"+Content["subjects"][0]["title"], description,
                                 Content["subjects"][0]["images"]["large"], Content["subjects"][0]["alt"])
         return echostr
+    elif msg["Content"].lower()=="bus":
+        bus=sbu()
+        echostr = textTpl % (
+            msg['FromUserName'], msg['ToUserName'], str(int(time.time())),
+            bus)
+        return echostr 
 
-if __name__ == "__main__":
+    elif special_match(msg["Content"])==True:
+        sbu_course=search_course()
+        
+        #print sbu_course
+        echostr = textTpl % (
+            msg['FromUserName'], msg['ToUserName'], str(int(time.time())),
+            sbu_course)
+        return echostr
+    else:
+       echostr = textTpl % (
+            msg['FromUserName'], msg['ToUserName'], str(int(time.time())),
+            u"无效指令，请输入“dy”查询电影或者课程代码如“CSE114”查询课程简介！")
+       return echostr
+
+
+
+
+
+
+
+if __name__=="__main__":
     # Interactive mode
     debug(True)
     run(host='127.0.0.1', port=8888, reloader=True)
